@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestor de Roll de Limpieza - Producción</title>
+  <!-- Tailwind CSS para diseño adaptable móvil y escritorio -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Librería html2canvas para exportar las tablas como imagen PNG -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Estilos suaves para barras de desplazamiento en tablas móviles */
+    ::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-14">
+
+  <!-- Barra Superior -->
+  <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-extrabold text-lg shadow-inner">
+          RL
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight">Gestor de Roll de Limpieza — Producción</h1>
+          <p class="text-xs text-slate-300">Detector inteligente de cierres + Rotación justa de 4 semanas</p>
+        </div>
+      </div>
+
+      <!-- Acciones Rápidas -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="generateAll()" class="bg-blue-600 hover:bg-blue-500 active:scale-95 transition text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Recalcular 4 Semanas
+        </button>
+        <button onclick="downloadCSVForSheets()" class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition text-white text-xs sm:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow flex items-center gap-1.5" title="Descarga archivo listo para abrir o importar en Google Sheets">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Exportar Google Sheets (.CSV)
+        </button>
+        <button onclick="resetToDefault()" class="bg-slate-700 hover:bg-slate-600 active:scale-95 transition text-slate-200 text-xs font-medium px-3 py-2.5 rounded-xl" title="Restaurar datos originales de la semana 16-22">
+          Restaurar Base
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Notificación flotante (reemplazo elegante de alert()) -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300">
+    <div id="toastContent" class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl text-sm font-medium flex items-center gap-2.5 border border-slate-700">
+      <span id="toastIcon" class="text-emerald-400 font-bold">✓</span>
+      <span id="toastText">Acción completada</span>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-8">
+
+    <!-- SECCIÓN 1: ENTRADA DE HORARIOS Y DETECTOR DE CIERRES -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-5 sm:p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-blue-100 text-blue-700 rounded-full">PASO 1 · INPUT</span>
+            <h2 class="text-lg font-bold text-slate-900">Horario del Personal de Producción</h2>
+          </div>
+          <p class="text-sm text-slate-500 mt-1">
+            Edita cualquier celda directamente. El sistema corrige automáticamente errores de tipeo (ej. <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">11 am a 12 pm</code> o <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">12m</code> &rarr; Cierre 12:00 AM) y marca en <span class="text-emerald-700 font-semibold">verde</span> quién hace cierre.
+          </p>
+        </div>
+
+        <!-- Fecha de inicio de Semana 1 y botón pegado rápido -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
+            <label for="startDateInput" class="text-xs font-semibold text-slate-600">Lunes Semana 1:</label>
+            <input type="date" id="startDateInput" class="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none" onchange="handleDateChange()" />
+          </div>
+          <button onclick="togglePasteModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 transition">
+            Pegar Horario Rápido
+          </button>
+          <button onclick="addWorkerRow()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-blue-200 transition">
+            + Agregar Personal
+          </button>
+        </div>
+      </div>
+
+      <!-- Panel desplegable para Pegado Rápido desde Excel / WhatsApp -->
+      <div id="pastePanel" class="hidden bg-slate-50 border-b border-slate-200 p-5">
+        <div class="max-w-3xl">
+          <h3 class="text-sm font-bold text-slate-800 mb-1">Pegar horarios desde Excel / Google Sheets (Separado por tabulaciones o comas)</h3>
+          <p class="text-xs text-slate-500 mb-3">Formato esperado por línea: <strong>Nombre, Cargo, Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo</strong></p>
+          <textarea id="quickPasteArea" rows="5" class="w-full rounded-xl border border-slate-300 p-3 text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Ejemplo:
+Nilver	Maestro BRASA	10 am a 5 pm	11 am a 12 pm	Descanso	7 pm a 12am	4 pm a 12 am	5 pm a 12 pm	11 am a 12 am"></textarea>
+          <div class="mt-3 flex items-center gap-2">
+            <button onclick="applyQuickPaste()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-xl">
+              Cargar Horarios Pegados
+            </button>
+            <button onclick="togglePasteModal()" class="bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-xs font-medium px-3 py-2 rounded-xl">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla Editable de Horarios -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse min-w-[1050px]">
+          <thead>
+            <tr class="bg-slate-800 text-white text-xs uppercase tracking-wider">
+              <th class="py-3 px-3 font-semibold sticky left-0 bg-slate-800 z-10 w-44">Nombre</th>
+              <th class="py-3 px-3 font-semibold w-40">Cargo</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Lunes</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Martes</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Miércoles</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Jueves</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Viernes</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Sábado</th>
+              <th class="py-3 px-2.5 font-semibold text-center">Domingo</th>
+              <th class="py-3 px-2.5 font-semibold text-center w-14">Quitar</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleTableBody" class="divide-y divide-slate-200 text-xs">
+            <!-- Filas generadas dinámicamente -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Resumen de Disponibles de Cierre detectados por día -->
+      <div class="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-4 flex-wrap">
+          <span class="inline-flex items-center gap-1.5 font-medium text-slate-700">
+            <span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
+            Hace cierre (12:00 AM detectado)
+          </span>
+          <span class="inline-flex items-center gap-1.5 font-medium text-slate-500">
+            <span class="w-3 h-3 rounded-sm bg-rose-200 inline-block"></span>
+            Descanso / No cierra
+          </span>
+          <span class="inline-flex items-center gap-1.5 font-medium text-amber-700">
+            <span class="w-3 h-3 rounded-sm bg-amber-300 inline-block"></span>
+            Día restringido por regla
+          </span>
+        </div>
+        <div id="closingSummaryText" class="font-semibold text-slate-700"></div>
+      </div>
+    </section>
+
+    <!-- SECCIÓN 2: REGLAS Y RESTRICCIONES CONFIGURABLES -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 rounded-full">PASO 2 · REGLAS</span>
+            <h2 class="text-lg font-bold text-slate-900">Restricciones de Días y Equidad</h2>
+          </div>
+          <p class="text-sm text-slate-500 mt-1">
+            Marca los días que un trabajador <strong>NO puede</strong> hacer limpieza (ej. <strong>Fabrizzio</strong> tiene excluido el <strong>Sábado</strong>). El algoritmo también evita repetir semanas seguidas o el mismo día.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="restrictionsGrid">
+        <!-- Tarjetas de restricciones por trabajador -->
+      </div>
+    </section>
+
+    <!-- SECCIÓN 3: RESULTADO — ROLL DE LIMPIEZA (4 SEMANAS) -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-5 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-800 rounded-full">PASO 3 · RESULTADO</span>
+            <h2 class="text-lg font-bold text-slate-900">Roll de Limpieza — Cierre (4 Semanas)</h2>
+          </div>
+          <p class="text-sm text-slate-500 mt-1">
+            Puedes hacer clic en cualquier nombre asignado si deseas cambiarlo manualmente por otro disponible de ese día, o descargar la imagen lista para enviar por WhatsApp.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          <button onclick="downloadRollImage()" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Descargar Imagen del Roll (PNG)
+          </button>
+        </div>
+      </div>
+
+      <!-- Contenedor capturable como Imagen PNG -->
+      <div id="rollCaptureArea" class="p-5 sm:p-7 bg-white space-y-6">
+        <div class="text-center border-b-2 border-slate-900 pb-3">
+          <h3 class="text-xl sm:text-2xl font-extrabold tracking-wide text-slate-900 uppercase">ROLL DE LIMPIEZA — PRODUCCIÓN (4 SEMANAS)</h3>
+          <p id="rollSubtitle" class="text-xs sm:text-sm font-medium text-slate-600 mt-1">Turno Cierre · Rotación Equitativa Automatizada</p>
+        </div>
+
+        <!-- Grid de las 4 tablas semanales -->
+        <div id="fourWeeksContainer" class="space-y-6">
+          <!-- Tablas semanales generadas aquí -->
+        </div>
+
+        <div class="pt-2 flex flex-wrap items-center justify-between text-[11px] text-slate-500 border-t border-slate-200">
+          <span>* Solo personal de producción en turno de cierre (12:00 AM).</span>
+          <span>* Regla activa: Sin repetir semanas seguidas · Fabrizzio excluido Sábados.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECCIÓN 4: PANEL DE EQUIDAD MENSUAL -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Panel de Equidad Mensual y Verificación</h2>
+          <p class="text-sm text-slate-500">Conteo total de limpiezas por persona en el ciclo de 4 semanas (objetivo: 2 a 3 turnos al mes, cero sobrecarga).</p>
+        </div>
+        <div id="fabrizzioCheckBadge" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          ✓ Fabrizzio: 0 Sábados asignados
+        </div>
+      </div>
+
+      <div id="equityGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <!-- Tarjetas de conteo por trabajador -->
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. CONFIGURACIÓN INICIAL Y DATOS PRECARGADOS (SEMANA 16 - 22)
+    // =========================================================================
+    const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    const STORAGE_KEY = 'gestor_roll_limpieza_produccion_v1';
+
+    // Datos reales extraídos y verificados del horario de Producción
+    const DEFAULT_WORKERS = [
+      {
+        id: 'w1',
+        name: 'Nilver',
+        shortName: 'NILVER',
+        role: 'Maestro BRASA',
+        shifts: ['10 am a 5 pm', '11 am a 12 pm', 'Descanso', '7 pm a 12am', '4 pm a 12 am', '5 pm a 12 pm', '11 am a 12 am'],
+        excludedDays: []
+      },
+      {
+        id: 'w2',
+        name: 'Michael Cesar',
+        shortName: 'MICHAEL',
+        role: 'Maestro coccion',
+        shifts: ['10 am a 12 am', 'Descanso', '11 AM A 12 AM', '11 am a 4 PM', '11 am a 12 pm', '11 am a 5 pm', '4 pm a 12 am'],
+        excludedDays: []
+      },
+      {
+        id: 'w3',
+        name: 'Brayan',
+        shortName: 'BRAYAN',
+        role: 'Cocinero Cocción Leña',
+        shifts: ['5 pm a 12 pm', 'Descanso', '11 am a 12 am', '11 am a 7 pm', '11 AM A 6 PM', '1 pm a 12 am', '10 am a 9 pm'],
+        excludedDays: []
+      },
+      {
+        id: 'w4',
+        name: 'Fabrizzio',
+        shortName: 'FABRIZZIO',
+        role: 'Cocinero Cocción Leña',
+        shifts: ['Descanso', '11:00 am a 12 pm', '11 am a 12 am', '11 am A 12 AM', '11 am a 4 pm', '4 pm a 12 pm', '11 am a 5 pm'],
+        excludedDays: [5] // 5 = Sábado excluido por dificultad
+      },
+      {
+        id: 'w5',
+        name: 'Jhonatan',
+        shortName: 'JHONATAN',
+        role: 'Auxiliar de cocina',
+        shifts: ['6 pm a 12 am', 'Descanso', '6 pm a 12 pm', '6pm a 12pm', '6 pm a 12 am', '11 am a 12 pm', '11 am a 12 pm'],
+        excludedDays: []
+      },
+      {
+        id: 'w6',
+        name: 'Rafael Ernesto',
+        shortName: 'RAFAEL',
+        role: 'Ayudante de cocina #1',
+        shifts: ['10 am a 12 am', '11 am a 12 am', 'Descanso', '5 pm a 12 am', '5 pm a 12 am', '10 am a 12 am', '1 pm a 12 am'],
+        excludedDays: []
+      },
+      {
+        id: 'w7',
+        name: 'Alex Quispe',
+        shortName: 'ALEX',
+        role: 'Ayudante de cocina #2',
+        shifts: ['Descanso', '11am a 12am', '11 am a 6 pm', '11 am a 6 pm', '11 AM A 6 PM', '10 AM A 5 PM', '10 am a 10 pm'],
+        excludedDays: []
+      },
+      {
+        id: 'w8',
+        name: 'Yoseli Medali',
+        shortName: 'YOSELI',
+        role: 'Ayudante de cocina #3',
+        shifts: ['10 am a 12am', 'Descanso', '6 pm a 12 am', '6 pm a 12 am', '5 pm a 12 pm', '3 pm a 12 pm', '1 pm a 12 am'],
+        excludedDays: []
+      },
+      {
+        id: 'w9',
+        name: 'Luchito',
+        shortName: 'LUCHITO',
+        role: 'Barman #1',
+        shifts: ['10 am a 6 pm', 'Descanso', '11 am a 12 pm', '11 am a 5 pm', '6 pm a 12 pm', '3 pm a 12 pm', '12 pm a 12 pm'],
+        excludedDays: []
+      },
+      {
+        id: 'w10',
+        name: 'Jorge Luis',
+        shortName: 'JORGE LUIS',
+        role: 'Barman #2',
+        shifts: ['5 pm a 12 pm', '11 am a 12 pm', 'Descanso', '5 pm a 12 am', '11 am a 6 pm', '11 am a 7 pm', '11 am a 10 pm'],
+        excludedDays: []
+      },
+      {
+        id: 'w11',
+        name: 'Diana',
+        shortName: 'DIANA',
+        role: 'Lavavajilla #1',
+        shifts: ['1pm a 12 am', 'Descanso', '12 PM A 7 PM', '12 PM A 7 PM', '12 PM A 7 PM', '1 PM A 12 AM', '1 PM A 12 AM'],
+        excludedDays: []
+      },
+      {
+        id: 'w12',
+        name: 'Rosa Lidia',
+        shortName: 'ROSA',
+        role: 'Lavavajilla #2',
+        shifts: ['Descanso', '1 pm a 12 am', '6 pm a 12 am', '6 pm a 12 am', '6 pm a 12 pm', '1 pm a 12 pm', '1 PM A 12 AM'],
+        excludedDays: []
+      }
+    ];
+
+    let appState = {
+      startDate: '2026-11-16',
+      workers: JSON.parse(JSON.stringify(DEFAULT_WORKERS)),
+      schedule4Weeks: [] // Array de 4 semanas, cada semana con 7 workerId
+    };
+
+    // =========================================================================
+    // 2. DETECTOR INTELIGENTE DE CIERRES (CORRECCIÓN DE ERROR HUMANO)
+    // =========================================================================
+    /**
+     * Analiza una cadena de turno (ej. "11 am a 12 pm", "12 PM A 7 PM", "Descanso")
+     * y determina si corresponde a un turno de CIERRE (12:00 AM / medianoche).
+     *
+     * Regla de error humano:
+     * - Si el texto dice descanso, feriado o suspendido -> false.
+     * - Divide en hora de entrada y hora de salida.
+     * - Si la salida es "12 am", "12:00 am", "12m", "12:00m" -> true.
+     * - Si la salida es "12 pm" o "12:00 pm", se verifica la hora de entrada:
+     *   como nadie entra entre 10:00 am y 11:00 pm para trabajar hasta mediodía (12 pm),
+     *   un "12 pm" como hora de salida es un error de tipeo de "12 am" -> true.
+     */
+    function isClosingShift(shiftStr) {
+      if (!shiftStr || typeof shiftStr !== 'string') return false;
+      const clean = shiftStr.trim().toLowerCase();
+
+      // Palabras clave de no asistencia
+      if (
+        clean.includes('descanso') ||
+        clean.includes('feriado') ||
+        clean.includes('suspendid') ||
+        clean === '-' ||
+        clean === ''
+      ) {
+        return false;
+      }
+
+      // Separar entrada y salida por "a" o "-" (ej: "11 am a 12 pm" o "11:00 am - 12 am")
+      const parts = clean.split(/\s+(?:a|-|al)\s+/i);
+      if (parts.length < 2) {
+        // Caso alternativo sin espacios alrededor de 'a' (ej. "11am a 12pm")
+        const altMatch = clean.match(/^(.+?)\s*(?:a|-)\s*(.+)$/i);
+        if (!altMatch) return false;
+        parts[0] = altMatch[1];
+        parts[1] = altMatch[2];
+      }
+
+      const startRaw = parts[0].trim();
+      const endRaw = parts[parts.length - 1].trim();
+
+      // Extraer hora numérica de inicio
+      const startHour = parseHour24(startRaw);
+
+      // Verificar si la salida apunta a las 12 (medianoche real o error de tipeo 12 pm / 12m)
+      const isTwelveEnd = /^12(?::00)?\s*(?:am|pm|m)?$/i.test(endRaw);
+
+      if (!isTwelveEnd) {
+        return false;
+      }
+
+      // Si dice explícitamente "12 am" o "12:00 am", es cierre confirmado
+      if (/am/i.test(endRaw)) {
+        return true;
+      }
+
+      // Si dice "12 pm", "12:00 pm", "12m" o "12":
+      // Si entró a partir de las 10:00 AM (10..23), salir a las 12 es medianoche (error humano PM->AM)
+      if (startHour !== null && startHour >= 10) {
+        return true;
+      }
+
+      return false;
+    }
+
+    /**
+     * Convierte una hora tipo "11 am", "1:30 pm", "12 pm" a formato 24h (0..23)
+     */
+    function parseHour24(timeStr) {
+      const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|m)?/i);
+      if (!match) return null;
+      let hour = parseInt(match[1], 10);
+      const meridiem = (match[3] || '').toLowerCase();
+
+      if (meridiem === 'pm' && hour < 12) hour += 12;
+      if (meridiem === 'am' && hour === 12) hour = 0;
+      return hour;
+    }
+
+    // =========================================================================
+    // 3. ALGORITMO DE ROTACIÓN EQUITATIVA DE 4 SEMANAS
+    // =========================================================================
+    /**
+     * Genera 4 semanas (28 días) cumpliendo:
+     * 1. Solo personal que hace cierre ese día.
+     * 2. Respeta días excluidos por trabajador (ej. Fabrizzio no hace Sábado).
+     * 3. Nadie limpia dos semanas seguidas si hay alternativas disponibles.
+     * 4. Nadie repite el mismo día de la semana en el mes si puede evitarse.
+     * 5. Equilibra el total mensual (2 a 3 turnos por persona).
+     */
+    function computeFourWeeksSchedule(workers) {
+      const weeksCount = 4;
+      const totalCounts = {};
+      const lastWeekWorked = {};
+      const daysUsedByWorker = {};
+
+      workers.forEach(w => {
+        totalCounts[w.id] = 0;
+        lastWeekWorked[w.id] = -10;
+        daysUsedByWorker[w.id] = new Set();
+      });
+
+      const resultWeeks = [];
+
+      for (let wIdx = 0; wIdx < weeksCount; wIdx++) {
+        // Primero calculamos qué candidatos válidos existen para cada día de esta semana
+        const dailyCandidates = [];
+        for (let dIdx = 0; dIdx < 7; dIdx++) {
+          const candidates = workers.filter(worker => {
+            const closes = isClosingShift(worker.shifts[dIdx]);
+            const excluded = (worker.excludedDays || []).includes(dIdx);
+            return closes && !excluded;
+          });
+          dailyCandidates.push(candidates);
+        }
+
+        // Ordenamos los días de la semana según escasez (días con menos candidatos se asignan primero)
+        const dayOrder = [0, 1, 2, 3, 4, 5, 6].sort(
+          (a, b) => dailyCandidates[a].length - dailyCandidates[b].length
+        );
+
+        const weekAssignments = new Array(7).fill(null);
+        const assignedThisWeek = new Set();
+
+        for (const dIdx of dayOrder) {
+          const pool = dailyCandidates[dIdx];
+          if (pool.length === 0) {
+            weekAssignments[dIdx] = null;
+            continue;
+          }
+
+          // Filtrar primero a los que aún no limpiaron esta semana
+          let eligible = pool.filter(w => !assignedThisWeek.has(w.id));
+          if (eligible.length === 0) {
+            eligible = [...pool];
+          }
+
+          // Puntaje de prioridad (menor puntaje = mayor prioridad para ser elegido)
+          eligible.sort((a, b) => {
+            // Penalización muy alta si limpió la semana inmediatamente anterior
+            const consecutiveA = (lastWeekWorked[a.id] === wIdx - 1) ? 100 : 0;
+            const consecutiveB = (lastWeekWorked[b.id] === wIdx - 1) ? 100 : 0;
+            if (consecutiveA !== consecutiveB) return consecutiveA - consecutiveB;
+
+            // Penalización por cantidad total de limpiezas acumuladas en el mes
+            if (totalCounts[a.id] !== totalCounts[b.id]) {
+              return totalCounts[a.id] - totalCounts[b.id];
+            }
+
+            // Penalización si ya hizo limpieza ese mismo día de la semana antes
+            const sameDayA = daysUsedByWorker[a.id].has(dIdx) ? 15 : 0;
+            const sameDayB = daysUsedByWorker[b.id].has(dIdx) ? 15 : 0;
+            if (sameDayA !== sameDayB) return sameDayA - sameDayB;
+
+            // Desempate determinístico rotativo según semana y día
+            const tieA = ((parseInt(a.id.replace(/\D/g, ''), 10) || 1) + wIdx * 3 + dIdx) % 13;
+            const tieB = ((parseInt(b.id.replace(/\D/g, ''), 10) || 1) + wIdx * 3 + dIdx) % 13;
+            return tieA - tieB;
+          });
+
+          const chosen = eligible[0];
+          weekAssignments[dIdx] = chosen.id;
+          assignedThisWeek.add(chosen.id);
+          totalCounts[chosen.id]++;
+          lastWeekWorked[chosen.id] = wIdx;
+          daysUsedByWorker[chosen.id].add(dIdx);
+        }
+
+        resultWeeks.push(weekAssignments);
+      }
+
+      return resultWeeks;
+    }
+
+    // =========================================================================
+    // 4. RENDERIZADO DE INTERFAZ Y ACTUALIZACIÓN EN VIVO
+    // =========================================================================
+    function renderAll() {
+      renderScheduleTable();
+      renderRestrictionsGrid();
+      renderFourWeeks();
+      renderEquityPanel();
+      saveState();
+    }
+
+    function renderScheduleTable() {
+      const tbody = document.getElementById('scheduleTableBody');
+      tbody.innerHTML = '';
+
+      appState.workers.forEach((worker, wIdx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 transition-colors';
+
+        // Nombre editable
+        const tdName = document.createElement('td');
+        tdName.className = 'py-2 px-3 font-semibold text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-100';
+        tdName.innerHTML = `
+          <input type="text" value="${escapeHtml(worker.name)}"
+            onchange="updateWorkerField(${wIdx}, 'name', this.value)"
+            class="w-full bg-transparent font-semibold text-slate-900 focus:bg-blue-50 focus:outline-none rounded px-1.5 py-1" />
+        `;
+        tr.appendChild(tdName);
+
+        // Cargo editable
+        const tdRole = document.createElement('td');
+        tdRole.className = 'py-2 px-3 text-slate-600 border-r border-slate-100';
+        tdRole.innerHTML = `
+          <input type="text" value="${escapeHtml(worker.role)}"
+            onchange="updateWorkerField(${wIdx}, 'role', this.value)"
+            class="w-full bg-transparent text-slate-600 focus:bg-blue-50 focus:outline-none rounded px-1.5 py-1" />
+        `;
+        tr.appendChild(tdRole);
+
+        // 7 días de horarios
+        for (let dIdx = 0; dIdx < 7; dIdx++) {
+          const shiftVal = worker.shifts[dIdx] || '';
+          const closes = isClosingShift(shiftVal);
+          const isExcluded = (worker.excludedDays || []).includes(dIdx);
+          const isRest = /descanso|feriado|suspendid/i.test(shiftVal);
+
+          let cellBg = 'bg-white text-slate-700';
+          let badgeHtml = '';
+
+          if (closes && isExcluded) {
+            cellBg = 'bg-amber-100 text-amber-900 font-semibold';
+            badgeHtml = `<span class="block text-[9px] uppercase tracking-tighter text-amber-800 font-bold">Cierre (Excluido)</span>`;
+          } else if (closes) {
+            cellBg = 'bg-emerald-100 text-emerald-950 font-semibold';
+            badgeHtml = `<span class="block text-[9px] uppercase tracking-tighter text-emerald-700 font-bold">✓ Cierre 12 AM</span>`;
+          } else if (isRest) {
+            cellBg = 'bg-rose-50 text-rose-700';
+          }
+
+          const td = document.createElement('td');
+          td.className = `py-1.5 px-2 text-center border-r border-slate-100 ${cellBg}`;
+          td.innerHTML = `
+            <input type="text" value="${escapeHtml(shiftVal)}"
+              onchange="updateWorkerShift(${wIdx}, ${dIdx}, this.value)"
+              class="w-full text-center bg-transparent focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none rounded px-1 py-0.5 text-xs" />
+            ${badgeHtml}
+          `;
+          tr.appendChild(td);
+        }
+
+        // Botón eliminar fila
+        const tdDel = document.createElement('td');
+        tdDel.className = 'py-2 px-2 text-center';
+        tdDel.innerHTML = `
+          <button onclick="removeWorker(${wIdx})" class="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition" title="Eliminar trabajador">
+            ✕
+          </button>
+        `;
+        tr.appendChild(tdDel);
+
+        tbody.appendChild(tr);
+      });
+
+      // Actualizar resumen diario de personas disponibles para cierre
+      const countsPerDay = DAYS.map((day, dIdx) => {
+        const available = appState.workers.filter(
+          w => isClosingShift(w.shifts[dIdx]) && !(w.excludedDays || []).includes(dIdx)
+        ).length;
+        return `${day.slice(0, 3)}: ${available}`;
+      });
+      document.getElementById('closingSummaryText').textContent =
+        'Disponibles cierre hoy: ' + countsPerDay.join(' · ');
+    }
+
+    function renderRestrictionsGrid() {
+      const grid = document.getElementById('restrictionsGrid');
+      grid.innerHTML = '';
+
+      appState.workers.forEach((worker, wIdx) => {
+        const card = document.createElement('div');
+        card.className = 'border border-slate-200 rounded-xl p-3 bg-slate-50/70 flex flex-col justify-between gap-2';
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        header.innerHTML = `
+          <div>
+            <span class="font-bold text-xs text-slate-900">${escapeHtml(worker.name)}</span>
+            <span class="text-[11px] text-slate-500 ml-1.5">${escapeHtml(worker.role)}</span>
+          </div>
+        `;
+        card.appendChild(header);
+
+        const daysRow = document.createElement('div');
+        daysRow.className = 'flex flex-wrap gap-1';
+
+        DAYS.forEach((dayName, dIdx) => {
+          const isExcluded = (worker.excludedDays || []).includes(dIdx);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.onclick = () => toggleExclusion(wIdx, dIdx);
+          btn.className = isExcluded
+            ? 'px-2 py-1 rounded-lg text-[11px] font-bold bg-amber-500 text-white shadow-sm transition'
+            : 'px-2 py-1 rounded-lg text-[11px] font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 transition';
+          btn.textContent = isExcluded ? `✕ ${dayName.slice(0, 3)}` : dayName.slice(0, 3);
+          btn.title = isExcluded
+            ? `${worker.name} excluido los ${dayName} (clic para habilitar)`
+            : `Clic para excluir a ${worker.name} los ${dayName}`;
+          daysRow.appendChild(btn);
+        });
+
+        card.appendChild(daysRow);
+        grid.appendChild(card);
+      });
+    }
+
+    function renderFourWeeks() {
+      const container = document.getElementById('fourWeeksContainer');
+      container.innerHTML = '';
+
+      const baseDate = parseLocalDate(appState.startDate);
+
+      appState.schedule4Weeks.forEach((weekArr, wIdx) => {
+        const weekStart = addDays(baseDate, wIdx * 7);
+        const weekEnd = addDays(weekStart, 6);
+
+        const weekCard = document.createElement('div');
+        weekCard.className = 'border-2 border-slate-800 rounded-xl overflow-hidden shadow-sm';
+
+        // Encabezado estilo imagen de referencia ("CIERRE" en azul)
+        const headerHtml = `
+          <div class="bg-slate-900 text-white px-4 py-2 flex items-center justify-between text-xs sm:text-sm font-bold">
+            <span>SEMANA ${wIdx + 1}</span>
+            <span class="text-slate-300 font-medium">${formatDateLong(weekStart)} al ${formatDateLong(weekEnd)}</span>
+          </div>
+          <div class="bg-blue-600 text-white text-center py-1.5 text-xs sm:text-sm font-extrabold tracking-widest uppercase border-t border-b border-slate-800">
+            CIERRE — LIMPIEZA DE BAÑOS Y PRODUCCIÓN
+          </div>
+        `;
+
+        // Tabla de 7 columnas (Lunes a Domingo)
+        let tableHtml = `
+          <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-center min-w-[680px]">
+              <thead>
+                <tr class="bg-slate-100 text-slate-900 text-xs font-extrabold border-b border-slate-800">
+        `;
+
+        for (let dIdx = 0; dIdx < 7; dIdx++) {
+          const currentDayDate = addDays(weekStart, dIdx);
+          tableHtml += `
+            <th class="py-2 px-2 border-r last:border-r-0 border-slate-800 w-1/7">
+              <div class="uppercase">${DAYS[dIdx]}</div>
+              <div class="text-[11px] font-semibold text-slate-600 mt-0.5">${formatDateShort(currentDayDate)}</div>
+            </th>
+          `;
+        }
+
+        tableHtml += `
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="bg-white">
+        `;
+
+        for (let dIdx = 0; dIdx < 7; dIdx++) {
+          const assignedId = weekArr[dIdx];
+          const candidates = appState.workers.filter(
+            w => isClosingShift(w.shifts[dIdx]) && !(w.excludedDays || []).includes(dIdx)
+          );
+
+          // Selector interactivo limpio que luce como celda de tabla pero permite ajuste manual
+          let optionsHtml = `<option value="">-- Sin asignar --</option>`;
+          candidates.forEach(cand => {
+            const label = (cand.shortName || cand.name).toUpperCase();
+            const selected = cand.id === assignedId ? 'selected' : '';
+            optionsHtml += `<option value="${cand.id}" ${selected}>${escapeHtml(label)}</option>`;
+          });
+
+          // Si el asignado manualmente ya no está en candidatos, mantenerlo visible con aviso
+          if (assignedId && !candidates.some(c => c.id === assignedId)) {
+            const wObj = appState.workers.find(w => w.id === assignedId);
+            if (wObj) {
+              const label = (wObj.shortName || wObj.name).toUpperCase();
+              optionsHtml += `<option value="${wObj.id}" selected>${escapeHtml(label)} (!)</option>`;
+            }
+          }
+
+          tableHtml += `
+            <td class="py-3.5 px-1.5 border-r last:border-r-0 border-slate-800 bg-white">
+              <select onchange="manualOverride(${wIdx}, ${dIdx}, this.value)"
+                class="w-full text-center font-extrabold text-xs sm:text-sm text-slate-900 bg-transparent hover:bg-blue-50 focus:bg-blue-50 rounded-lg py-1 px-1 cursor-pointer focus:outline-none appearance-none">
+                ${optionsHtml}
+              </select>
+            </td>
+          `;
+        }
+
+        tableHtml += `
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        weekCard.innerHTML = headerHtml + tableHtml;
+        container.appendChild(weekCard);
+      });
+    }
+
+    function renderEquityPanel() {
+      const grid = document.getElementById('equityGrid');
+      grid.innerHTML = '';
+
+      const counts = {};
+      let fabrizzioSaturdays = 0;
+
+      appState.workers.forEach(w => (counts[w.id] = 0));
+
+      appState.schedule4Weeks.forEach(week => {
+        week.forEach((workerId, dIdx) => {
+          if (workerId && counts[workerId] !== undefined) {
+            counts[workerId]++;
+            const workerObj = appState.workers.find(w => w.id === workerId);
+            if (workerObj && workerObj.name.toLowerCase().includes('fabrizzio') && dIdx === 5) {
+              fabrizzioSaturdays++;
+            }
+          }
+        });
+      });
+
+      appState.workers.forEach(w => {
+        const count = counts[w.id] || 0;
+        let badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+        if (count === 0) badgeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
+        if (count >= 4) badgeStyle = 'bg-rose-100 text-rose-800 border-rose-200';
+
+        const card = document.createElement('div');
+        card.className = 'border border-slate-200 rounded-xl p-3 flex flex-col justify-between bg-slate-50/50';
+        card.innerHTML = `
+          <div class="text-xs font-bold text-slate-800 truncate" title="${escapeHtml(w.name)}">${escapeHtml(w.name)}</div>
+          <div class="text-[11px] text-slate-500 truncate mb-2">${escapeHtml(w.role)}</div>
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] text-slate-500">Al mes:</span>
+            <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold border ${badgeStyle}">${count} ${count === 1 ? 'vez' : 'veces'}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      const fabBadge = document.getElementById('fabrizzioCheckBadge');
+      if (fabrizzioSaturdays === 0) {
+        fabBadge.className = 'px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        fabBadge.textContent = '✓ Fabrizzio: 0 Sábados asignados';
+      } else {
+        fabBadge.className = 'px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200';
+        fabBadge.textContent = `⚠ Atención: Fabrizzio tiene ${fabrizzioSaturdays} sábado(s)`;
+      }
+    }
+
+    // =========================================================================
+    // 5. ACCIONES DE USUARIO Y EXPORTACIÓN (PNG Y GOOGLE SHEETS CSV)
+    // =========================================================================
+    function generateAll() {
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      renderAll();
+      showToast('Roll de 4 semanas recalculado con rotación justa');
+    }
+
+    function updateWorkerField(wIdx, field, value) {
+      appState.workers[wIdx][field] = value.trim();
+      if (field === 'name') {
+        appState.workers[wIdx].shortName = value.trim().split(' ')[0].toUpperCase();
+      }
+      renderAll();
+    }
+
+    function updateWorkerShift(wIdx, dIdx, value) {
+      appState.workers[wIdx].shifts[dIdx] = value.trim();
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      renderAll();
+      showToast('Horario actualizado y roll recalculado');
+    }
+
+    function toggleExclusion(wIdx, dIdx) {
+      const excl = appState.workers[wIdx].excludedDays || [];
+      const pos = excl.indexOf(dIdx);
+      if (pos >= 0) {
+        excl.splice(pos, 1);
+      } else {
+        excl.push(dIdx);
+      }
+      appState.workers[wIdx].excludedDays = excl;
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      renderAll();
+      showToast('Restricción actualizada');
+    }
+
+    function manualOverride(wIdx, dIdx, newWorkerId) {
+      appState.schedule4Weeks[wIdx][dIdx] = newWorkerId || null;
+      renderEquityPanel();
+      saveState();
+      showToast('Asignación manual guardada');
+    }
+
+    function addWorkerRow() {
+      const newId = 'w' + Date.now();
+      appState.workers.push({
+        id: newId,
+        name: 'Nuevo Personal',
+        shortName: 'NUEVO',
+        role: 'Producción',
+        shifts: ['Descanso', 'Descanso', 'Descanso', 'Descanso', 'Descanso', 'Descanso', 'Descanso'],
+        excludedDays: []
+      });
+      renderAll();
+      showToast('Trabajador agregado');
+    }
+
+    function removeWorker(wIdx) {
+      if (appState.workers.length <= 1) {
+        showToast('Debe quedar al menos un trabajador en la lista');
+        return;
+      }
+      appState.workers.splice(wIdx, 1);
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      renderAll();
+      showToast('Trabajador eliminado');
+    }
+
+    function handleDateChange() {
+      const val = document.getElementById('startDateInput').value;
+      if (val) {
+        appState.startDate = val;
+        renderFourWeeks();
+        saveState();
+      }
+    }
+
+    function togglePasteModal() {
+      const panel = document.getElementById('pastePanel');
+      panel.classList.toggle('hidden');
+    }
+
+    function applyQuickPaste() {
+      const raw = document.getElementById('quickPasteArea').value.trim();
+      if (!raw) {
+        showToast('Pega primero las filas de horarios');
+        return;
+      }
+      const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0);
+      const parsedWorkers = [];
+
+      lines.forEach((line, idx) => {
+        const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+        if (cols.length >= 9) {
+          const name = cols[0].trim();
+          const role = cols[1].trim();
+          const shifts = cols.slice(2, 9).map(s => s.trim());
+          const isFabrizzio = name.toLowerCase().includes('fabrizzio');
+          parsedWorkers.push({
+            id: 'wp_' + idx + '_' + Date.now(),
+            name,
+            shortName: name.split(' ')[0].toUpperCase(),
+            role,
+            shifts,
+            excludedDays: isFabrizzio ? [5] : []
+          });
+        }
+      });
+
+      if (parsedWorkers.length === 0) {
+        showToast('Formato no reconocido. Verifica las 9 columnas.');
+        return;
+      }
+
+      appState.workers = parsedWorkers;
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      document.getElementById('pastePanel').classList.add('hidden');
+      renderAll();
+      showToast(`Se cargaron ${parsedWorkers.length} trabajadores correctamente`);
+    }
+
+    // Exportar imagen PNG del contenedor de 4 semanas
+    async function downloadRollImage() {
+      const captureEl = document.getElementById('rollCaptureArea');
+      showToast('Generando imagen PNG del Roll...');
+      try {
+        const canvas = await html2canvas(captureEl, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true
+        });
+        const link = document.createElement('a');
+        link.download = `Roll_Limpieza_Produccion_4_Semanas.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showToast('Imagen descargada correctamente');
+      } catch (err) {
+        console.error(err);
+        showToast('Error al generar la imagen');
+      }
+    }
+
+    // Exportar archivo CSV listo para abrir directamente en Google Sheets / Excel
+    function downloadCSVForSheets() {
+      const baseDate = parseLocalDate(appState.startDate);
+      let csv = '\uFEFF'; // BOM UTF-8 para tildes en Excel/Google Sheets
+      csv += 'ROLL DE LIMPIEZA - PRODUCCION (TURNO CIERRE)\n\n';
+
+      appState.schedule4Weeks.forEach((weekArr, wIdx) => {
+        const weekStart = addDays(baseDate, wIdx * 7);
+        csv += `SEMANA ${wIdx + 1}\n`;
+        csv += 'TURNO,LUNES,MARTES,MIERCOLES,JUEVES,VIERNES,SABADO,DOMINGO\n';
+
+        const datesRow = ['FECHA'];
+        for (let d = 0; d < 7; d++) {
+          datesRow.push(formatDateShort(addDays(weekStart, d)));
+        }
+        csv += datesRow.join(',') + '\n';
+
+        const namesRow = ['CIERRE'];
+        for (let d = 0; d < 7; d++) {
+          const wObj = appState.workers.find(w => w.id === weekArr[d]);
+          namesRow.push(wObj ? (wObj.shortName || wObj.name).toUpperCase() : 'SIN ASIGNAR');
+        }
+        csv += namesRow.join(',') + '\n\n';
+      });
+
+      csv += 'HORARIO BASE INGRESADO (PRODUCCION)\n';
+      csv += 'Nombre,Cargo,Lunes,Martes,Miercoles,Jueves,Viernes,Sabado,Domingo\n';
+      appState.workers.forEach(w => {
+        csv += `"${w.name}","${w.role}",${w.shifts.map(s => `"${s}"`).join(',')}\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Roll_Limpieza_Google_Sheets.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Archivo CSV descargado (listo para importar en Google Sheets)');
+    }
+
+    function resetToDefault() {
+      localStorage.removeItem(STORAGE_KEY);
+      appState = {
+        startDate: '2026-11-16',
+        workers: JSON.parse(JSON.stringify(DEFAULT_WORKERS)),
+        schedule4Weeks: []
+      };
+      document.getElementById('startDateInput').value = appState.startDate;
+      appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      renderAll();
+      showToast('Datos originales restaurados');
+    }
+
+    // =========================================================================
+    // 6. PERSISTENCIA Y UTILIDADES
+    // =========================================================================
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        console.warn('No se pudo guardar en localStorage:', e);
+      }
+    }
+
+    function loadState() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.workers) && parsed.workers.length > 0) {
+            appState = parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('Error cargando localStorage:', e);
+      }
+      if (!appState.schedule4Weeks || appState.schedule4Weeks.length !== 4) {
+        appState.schedule4Weeks = computeFourWeeksSchedule(appState.workers);
+      }
+    }
+
+    function parseLocalDate(isoStr) {
+      const [y, m, d] = isoStr.split('-').map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    }
+
+    function addDays(dateObj, days) {
+      const copy = new Date(dateObj.getTime());
+      copy.setDate(copy.getDate() + days);
+      return copy;
+    }
+
+    function formatDateShort(dateObj) {
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      return `${d}/${m}`;
+    }
+
+    function formatDateLong(dateObj) {
+      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      return `${dateObj.getDate()} ${months[dateObj.getMonth()]}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastText').textContent = msg;
+      toast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3000);
+    }
+
+    // Inicialización al cargar la ventana
+    window.onload = function () {
+      loadState();
+      document.getElementById('startDateInput').value = appState.startDate;
+      renderAll();
+    };
+  </script>
+</body>
+</html>
